@@ -1,40 +1,66 @@
 import { useState, useEffect } from 'react'
 
-// Receipt Card Component - Handles both display and edit modes for a single receipt
+// Receipt Card Component
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // State to hold our form validation errors
+  const [validationError, setValidationError] = useState(null);
+
+  const MAX_ITEMS = 50; // Protect the database from bloat
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: name.includes('amount') || name === 'subtotal' ? parseFloat(value) || 0 : value });
+    setValidationError(null); // Clear errors when the user types
   };
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
     newItems[index] = { ...newItems[index], [field]: field === 'price' ? parseFloat(value) || 0 : value };
     setFormData({ ...formData, items: newItems });
+    setValidationError(null); // Clear errors when the user types
   };
 
-  // Add and Remove Item Handlers
   const handleAddItem = () => {
+    // Rule 1: Cap the items
+    if (formData.items?.length >= MAX_ITEMS) {
+      setValidationError(`Maximum limit of ${MAX_ITEMS} items reached.`);
+      return;
+    }
     setFormData({
       ...formData,
       items: [...(formData.items || []), { name: '', price: 0 }]
     });
+    setValidationError(null);
   };
 
   const handleRemoveItem = (indexToRemove) => {
+    // Rule 2: Prevent deleting the last item
+    if (formData.items?.length <= 1) {
+      setValidationError("A receipt must have at least one line item.");
+      return;
+    }
     setFormData({
       ...formData,
       items: formData.items.filter((_, index) => index !== indexToRemove)
     });
+    setValidationError(null);
   };
-  // ------------------------------------------
 
   const handleSave = async () => {
+    // Rule 3: Prevent saving if there are blank item names
+    const hasBlankItems = formData.items?.some(item => !item.name || item.name.trim() === '');
+    if (hasBlankItems) {
+      setValidationError("All line items must have a name. Please fill them in or remove the blank rows.");
+      return;
+    }
+
     setIsSaving(true);
+    setValidationError(null);
+
     try {
       const response = await fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
         method: 'PUT',
@@ -46,10 +72,11 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
         setIsEditing(false);
         onRefresh();
       } else {
-        alert("Failed to save changes.");
+        setValidationError("Failed to save changes to the database.");
       }
     } catch (error) {
       console.error("Error saving:", error);
+      setValidationError("Network error while saving.");
     } finally {
       setIsSaving(false);
     }
@@ -76,7 +103,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
             onClick={() => setIsEditing(true)}
             className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
           >
-            Edit
+            Edit Fix
           </button>
         </div>
         
@@ -128,7 +155,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="text-slate-500 sm:text-sm">$</span></div>
                 <input type="number" step="0.01" value={item.price || 0} onChange={(e) => handleItemChange(index, 'price', e.target.value)} className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm" />
               </div>
-              {/* NEW: Remove Item Button */}
               <button 
                 onClick={() => handleRemoveItem(index)}
                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
@@ -175,7 +201,16 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           </div>
         </div>
 
-        {showWarning && (
+        {/* Validation Error Banner */}
+        {validationError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
+            <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <p className="text-sm font-medium text-red-800">{validationError}</p>
+          </div>
+        )}
+
+        {/* Math Warning Banner */}
+        {showWarning && !validationError && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             <p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up. You can still save if this matches the physical receipt.</p>
@@ -183,7 +218,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
         )}
 
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={() => { setIsEditing(false); setFormData(receipt); }} className="px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Cancel</button>
+          <button onClick={() => { setIsEditing(false); setFormData(receipt); setValidationError(null); }} className="px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Cancel</button>
           <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">{isSaving ? 'Saving...' : 'Save & Confirm'}</button>
         </div>
       </div>
@@ -191,7 +226,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   );
 };
 
-// Main App Component - Handles file upload, displays current receipt and history
+// Main App Component
 function App() {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
