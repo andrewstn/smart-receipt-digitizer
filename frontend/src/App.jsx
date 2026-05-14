@@ -1,31 +1,31 @@
 import { useState, useEffect } from 'react'
 
-// Receipt Card Component
+// --- 1. RECEIPT CARD COMPONENT ---
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // State to hold our form validation errors
   const [validationError, setValidationError] = useState(null);
+  
+  // NEW: Accordion State (Defaults to open if it's a new upload!)
+  const [isExpanded, setIsExpanded] = useState(isNew || false);
 
-  const MAX_ITEMS = 50; // Protect the database from bloat
+  const MAX_ITEMS = 50;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: name.includes('amount') || name === 'subtotal' ? parseFloat(value) || 0 : value });
-    setValidationError(null); // Clear errors when the user types
+    setValidationError(null);
   };
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
     newItems[index] = { ...newItems[index], [field]: field === 'price' ? parseFloat(value) || 0 : value };
     setFormData({ ...formData, items: newItems });
-    setValidationError(null); // Clear errors when the user types
+    setValidationError(null);
   };
 
   const handleAddItem = () => {
-    // Rule 1: Cap the items
     if (formData.items?.length >= MAX_ITEMS) {
       setValidationError(`Maximum limit of ${MAX_ITEMS} items reached.`);
       return;
@@ -38,7 +38,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   };
 
   const handleRemoveItem = (indexToRemove) => {
-    // Rule 2: Prevent deleting the last item
     if (formData.items?.length <= 1) {
       setValidationError("A receipt must have at least one line item.");
       return;
@@ -51,7 +50,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   };
 
   const handleSave = async () => {
-    // Rule 3: Prevent saving if there are blank item names
     const hasBlankItems = formData.items?.some(item => !item.name || item.name.trim() === '');
     if (hasBlankItems) {
       setValidationError("All line items must have a name. Please fill them in or remove the blank rows.");
@@ -82,51 +80,78 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     }
   };
 
-  // Math Validation 
   const expectedSubtotal = formData.items?.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0) || 0;
   const expectedTotal = expectedSubtotal - (parseFloat(formData.discount_amount) || 0) + (parseFloat(formData.tax_amount) || 0);
   const isSubtotalOff = Math.abs(expectedSubtotal - (formData.subtotal || 0)) > 0.02;
   const isTotalOff = Math.abs(expectedTotal - (formData.total_amount || 0)) > 0.02;
   const showWarning = isSubtotalOff || isTotalOff;
 
+  // --- VIEW MODE (With Accordion) ---
   if (!isEditing) {
     return (
       <div className={`bg-white rounded-xl shadow-sm border ${isNew ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200'} overflow-hidden transition-all hover:shadow-md`}>
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
+        
+        {/* NEW: Clickable Header for Accordion */}
+        <div 
+          className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center cursor-pointer select-none"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
           <div>
-            <h3 className="text-lg font-bold text-slate-900 tracking-tight">{receipt.store_name}</h3>
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              {receipt.store_name}
+              {/* Show the total in the header so users can see it without opening the accordion */}
+              {!isExpanded && <span className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">${(receipt.total_amount || 0).toFixed(2)}</span>}
+            </h3>
             <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">
               {receipt.date || 'No Date'} • Ref #{receipt.id}
             </div>
           </div>
-          <button 
-            onClick={() => setIsEditing(true)}
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
-          >
-            Edit Fix
-          </button>
+          
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); // Prevent the accordion from toggling when clicking Edit
+                setIsEditing(true); 
+                setIsExpanded(true); // Always expand when entering edit mode
+              }}
+              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
+            >
+              Edit
+            </button>
+            {/* Rotating Chevron Icon */}
+            <svg 
+              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} 
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         </div>
         
-        <div className="px-6 py-5">
-          <div className="space-y-3">
-            {receipt.items?.map((item, index) => (
-              <div key={index} className="flex justify-between text-sm">
-                <span className="text-slate-600">{item.name}</span>
-                <span className="text-slate-900 font-semibold">${(item.price || 0).toFixed(2)}</span>
-              </div>
-            ))}
+        {/* NEW: The Accordion Body (Only renders if isExpanded is true) */}
+        {isExpanded && (
+          <div className="px-6 py-5 animate-in slide-in-from-top-2 fade-in duration-200">
+            <div className="space-y-3">
+              {receipt.items?.map((item, index) => (
+                <div key={index} className="flex justify-between text-sm">
+                  <span className="text-slate-600">{item.name}</span>
+                  <span className="text-slate-900 font-semibold">${(item.price || 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 pt-4 border-t border-dashed border-slate-200 space-y-2">
+              <div className="flex justify-between text-sm text-slate-500"><span>Subtotal</span><span className="font-medium">${(receipt.subtotal || 0).toFixed(2)}</span></div>
+              {(receipt.discount_amount || 0) > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Discount</span><span className="font-medium">-${(receipt.discount_amount || 0).toFixed(2)}</span></div>}
+              <div className="flex justify-between text-sm text-slate-500"><span>Tax</span><span className="font-medium">${(receipt.tax_amount || 0).toFixed(2)}</span></div>
+              <div className="flex justify-between items-center pt-3 mt-3 border-t border-slate-100"><span className="text-base font-bold text-slate-900">Total</span><span className="text-xl font-black text-indigo-600">${(receipt.total_amount || 0).toFixed(2)}</span></div>
+            </div>
           </div>
-          <div className="mt-6 pt-4 border-t border-dashed border-slate-200 space-y-2">
-            <div className="flex justify-between text-sm text-slate-500"><span>Subtotal</span><span className="font-medium">${(receipt.subtotal || 0).toFixed(2)}</span></div>
-            {(receipt.discount_amount || 0) > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Discount</span><span className="font-medium">-${(receipt.discount_amount || 0).toFixed(2)}</span></div>}
-            <div className="flex justify-between text-sm text-slate-500"><span>Tax</span><span className="font-medium">${(receipt.tax_amount || 0).toFixed(2)}</span></div>
-            <div className="flex justify-between items-center pt-3 mt-3 border-t border-slate-100"><span className="text-base font-bold text-slate-900">Total</span><span className="text-xl font-black text-indigo-600">${(receipt.total_amount || 0).toFixed(2)}</span></div>
-          </div>
-        </div>
+        )}
       </div>
     );
   }
 
+  // --- EDIT MODE (Remains unchanged) ---
   return (
     <div className="bg-white rounded-xl shadow-lg border border-indigo-300 ring-2 ring-indigo-100 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-indigo-50">
@@ -201,7 +226,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           </div>
         </div>
 
-        {/* Validation Error Banner */}
         {validationError && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -209,7 +233,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           </div>
         )}
 
-        {/* Math Warning Banner */}
         {showWarning && !validationError && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -226,7 +249,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   );
 };
 
-// Main App Component
+// --- 2. MAIN APP COMPONENT ---
 function App() {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -313,7 +336,9 @@ function App() {
                 <h2 className="text-xl font-extrabold text-slate-900">Receipt History</h2>
                 <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{history.length} records</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Changed to a 1-column grid so accordions look nice when stacked */}
+              <div className="grid grid-cols-1 gap-4">
                 {history.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
                   <ReceiptCard key={receipt.id} receipt={receipt} isNew={false} onRefresh={fetchHistory} />
                 ))}
