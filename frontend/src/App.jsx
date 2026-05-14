@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-// Receipt Card Component
+// Receipt Card Component - Handles both display and edit modes for a single receipt
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
@@ -16,6 +16,22 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     newItems[index] = { ...newItems[index], [field]: field === 'price' ? parseFloat(value) || 0 : value };
     setFormData({ ...formData, items: newItems });
   };
+
+  // Add and Remove Item Handlers
+  const handleAddItem = () => {
+    setFormData({
+      ...formData,
+      items: [...(formData.items || []), { name: '', price: 0 }]
+    });
+  };
+
+  const handleRemoveItem = (indexToRemove) => {
+    setFormData({
+      ...formData,
+      items: formData.items.filter((_, index) => index !== indexToRemove)
+    });
+  };
+  // ------------------------------------------
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -100,18 +116,41 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
       </div>
       
       <div className="px-6 py-5 bg-slate-50">
-        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Line Items</label>
+        <div className="flex justify-between items-center mb-3">
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Line Items</label>
+        </div>
+        
         <div className="space-y-3">
           {formData.items?.map((item, index) => (
-            <div key={index} className="flex gap-4">
-              <input type="text" value={item.name || ''} onChange={(e) => handleItemChange(index, 'name', e.target.value)} className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm" />
+            <div key={index} className="flex gap-3 items-center group">
+              <input type="text" value={item.name || ''} onChange={(e) => handleItemChange(index, 'name', e.target.value)} placeholder="Item name" className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm" />
               <div className="relative w-32">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="text-slate-500 sm:text-sm">$</span></div>
                 <input type="number" step="0.01" value={item.price || 0} onChange={(e) => handleItemChange(index, 'price', e.target.value)} className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm" />
               </div>
+              {/* NEW: Remove Item Button */}
+              <button 
+                onClick={() => handleRemoveItem(index)}
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                title="Remove item"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
             </div>
           ))}
         </div>
+
+        <button 
+          onClick={handleAddItem}
+          className="mt-4 flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Add Line Item
+        </button>
 
         <div className="mt-6 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4">
           <div>
@@ -152,7 +191,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   );
 };
 
-// Main App Component
+// Main App Component - Handles file upload, displays current receipt and history
 function App() {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -251,4 +290,5 @@ function App() {
     </div>
   )
 }
+
 export default App
