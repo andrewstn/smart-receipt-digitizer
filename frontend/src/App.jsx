@@ -45,7 +45,7 @@ function App() {
 
   return (
     <div className="container">
-      <h1>🧾 Smart Receipt Digitizer</h1>
+      <h1>Smart Receipt Digitizer</h1>
       
       <div className="upload-section">
         <input type="file" accept="image/*" onChange={handleFileChange} />
