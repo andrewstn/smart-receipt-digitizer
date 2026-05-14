@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 
-// --- 1. RECEIPT CARD COMPONENT ---
+// Receipt Card Component
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
   const [validationError, setValidationError] = useState(null);
-  
-  // NEW: Accordion State (Defaults to open if it's a new upload!)
   const [isExpanded, setIsExpanded] = useState(isNew || false);
 
   const MAX_ITEMS = 50;
@@ -86,12 +84,9 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const isTotalOff = Math.abs(expectedTotal - (formData.total_amount || 0)) > 0.02;
   const showWarning = isSubtotalOff || isTotalOff;
 
-  // --- VIEW MODE (With Accordion) ---
   if (!isEditing) {
     return (
       <div className={`bg-white rounded-xl shadow-sm border ${isNew ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200'} overflow-hidden transition-all hover:shadow-md`}>
-        
-        {/* NEW: Clickable Header for Accordion */}
         <div 
           className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center cursor-pointer select-none"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -99,36 +94,29 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           <div>
             <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
               {receipt.store_name}
-              {/* Show the total in the header so users can see it without opening the accordion */}
               {!isExpanded && <span className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">${(receipt.total_amount || 0).toFixed(2)}</span>}
             </h3>
             <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">
               {receipt.date || 'No Date'} • Ref #{receipt.id}
             </div>
           </div>
-          
           <div className="flex items-center gap-4">
             <button 
               onClick={(e) => { 
-                e.stopPropagation(); // Prevent the accordion from toggling when clicking Edit
+                e.stopPropagation();
                 setIsEditing(true); 
-                setIsExpanded(true); // Always expand when entering edit mode
+                setIsExpanded(true);
               }}
               className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
             >
-              Edit
+              Edit Fix
             </button>
-            {/* Rotating Chevron Icon */}
-            <svg 
-              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} 
-              fill="none" viewBox="0 0 24 24" stroke="currentColor"
-            >
+            <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </div>
         
-        {/* NEW: The Accordion Body (Only renders if isExpanded is true) */}
         {isExpanded && (
           <div className="px-6 py-5 animate-in slide-in-from-top-2 fade-in duration-200">
             <div className="space-y-3">
@@ -151,7 +139,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     );
   }
 
-  // --- EDIT MODE (Remains unchanged) ---
   return (
     <div className="bg-white rounded-xl shadow-lg border border-indigo-300 ring-2 ring-indigo-100 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-indigo-50">
@@ -180,34 +167,21 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="text-slate-500 sm:text-sm">$</span></div>
                 <input type="number" step="0.01" value={item.price || 0} onChange={(e) => handleItemChange(index, 'price', e.target.value)} className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm" />
               </div>
-              <button 
-                onClick={() => handleRemoveItem(index)}
-                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                title="Remove item"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+              <button onClick={() => handleRemoveItem(index)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Remove item">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
               </button>
             </div>
           ))}
         </div>
 
-        <button 
-          onClick={handleAddItem}
-          className="mt-4 flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
+        <button onClick={handleAddItem} className="mt-4 flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
           Add Line Item
         </button>
 
         <div className="mt-6 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4">
           <div>
-            <label className={`block text-xs mb-1 ${isSubtotalOff ? 'font-bold text-amber-600' : 'text-slate-500'}`}>
-              Subtotal {isSubtotalOff && `(Expected $${expectedSubtotal.toFixed(2)})`}
-            </label>
+            <label className={`block text-xs mb-1 ${isSubtotalOff ? 'font-bold text-amber-600' : 'text-slate-500'}`}>Subtotal {isSubtotalOff && `(Expected $${expectedSubtotal.toFixed(2)})`}</label>
             <input type="number" step="0.01" name="subtotal" value={formData.subtotal || 0} onChange={handleChange} className={`w-full px-3 py-2 border rounded-md sm:text-sm ${isSubtotalOff ? 'border-amber-400 bg-amber-50 focus:border-amber-500' : 'border-slate-300'}`} />
           </div>
           <div>
@@ -219,9 +193,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
             <input type="number" step="0.01" name="tax_amount" value={formData.tax_amount || 0} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-md sm:text-sm" />
           </div>
           <div>
-            <label className={`block text-xs font-bold mb-1 ${isTotalOff ? 'text-amber-600' : 'text-slate-900'}`}>
-              Total {isTotalOff && `(Expected $${expectedTotal.toFixed(2)})`}
-            </label>
+            <label className={`block text-xs font-bold mb-1 ${isTotalOff ? 'text-amber-600' : 'text-slate-900'}`}>Total {isTotalOff && `(Expected $${expectedTotal.toFixed(2)})`}</label>
             <input type="number" step="0.01" name="total_amount" value={formData.total_amount || 0} onChange={handleChange} className={`w-full px-3 py-2 border rounded-md sm:text-sm font-bold ${isTotalOff ? 'border-amber-400 bg-amber-50 focus:border-amber-500' : 'border-indigo-400 bg-indigo-50'}`} />
           </div>
         </div>
@@ -236,7 +208,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
         {showWarning && !validationError && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            <p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up. You can still save if this matches the physical receipt.</p>
+            <p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up.</p>
           </div>
         )}
 
@@ -249,13 +221,15 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   );
 };
 
-// --- 2. MAIN APP COMPONENT ---
+// Main App Component
 function App() {
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [currentReceipt, setCurrentReceipt] = useState(null)
   const [history, setHistory] = useState([])
   const [error, setError] = useState(null)
+
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => { fetchHistory() }, [])
 
@@ -286,6 +260,24 @@ function App() {
       fetchHistory()
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
+
+  // Filtering logic for search functionality:
+  // We filter the history array before we map over it to render the cards.
+  const filteredHistory = history.filter(receipt => {
+    if (!searchTerm) return true; // If search is empty, show everything
+    
+    const term = searchTerm.toLowerCase();
+    
+    // Check Store Name
+    const matchStore = receipt.store_name?.toLowerCase().includes(term);
+    // Check Date
+    const matchDate = receipt.date?.toLowerCase().includes(term);
+    // Check every item inside the receipt
+    const matchItems = receipt.items?.some(item => item.name?.toLowerCase().includes(term));
+    
+    // If any of these match, keep the receipt in the list
+    return matchStore || matchDate || matchItems;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -330,18 +322,50 @@ function App() {
               <ReceiptCard receipt={currentReceipt} isNew={true} onRefresh={fetchHistory} />
             </section>
           )}
+          
           {history.length > 0 && (
             <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-extrabold text-slate-900">Receipt History</h2>
-                <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{history.length} records</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-extrabold text-slate-900">Receipt History</h2>
+                  <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{filteredHistory.length} records</span>
+                </div>
+                
+                {/* NEW: Search Bar UI */}
+                <div className="relative w-full sm:w-72">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search stores, items, or dates..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                  />
+                  {searchTerm && (
+                    <button 
+                      onClick={() => setSearchTerm('')}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  )}
+                </div>
               </div>
               
-              {/* Changed to a 1-column grid so accordions look nice when stacked */}
               <div className="grid grid-cols-1 gap-4">
-                {history.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
+                {filteredHistory.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
                   <ReceiptCard key={receipt.id} receipt={receipt} isNew={false} onRefresh={fetchHistory} />
                 ))}
+
+                {filteredHistory.length === 0 && searchTerm && (
+                  <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+                    <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <h3 className="mt-2 text-sm font-medium text-slate-900">No matching receipts</h3>
+                    <p className="mt-1 text-sm text-slate-500">We couldn't find anything matching "{searchTerm}".</p>
+                  </div>
+                )}
               </div>
             </section>
           )}
