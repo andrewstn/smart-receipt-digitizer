@@ -81,7 +81,7 @@ def get_all_receipts(db: Session = Depends(get_db)):
     receipts = db.query(models.ReceiptDB).order_by(models.ReceiptDB.id.desc()).all()
     return receipts
 
-# --- UPDATE: Add response_model=ReceiptResponse ---
+# Extract receipt endpoint
 @app.post("/api/extract", response_model=ReceiptResponse)
 async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
@@ -129,5 +129,37 @@ async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(ge
 
         return db_receipt
 
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
+@app.put("/api/receipts/{receipt_id}", response_model=ReceiptResponse)
+def update_receipt(receipt_id: int, updated_data: ReceiptSchema, db: Session = Depends(get_db)):
+    """Updates an existing receipt and its items in the database."""
+    
+    # Find the existing receipt
+    db_receipt = db.query(models.ReceiptDB).filter(models.ReceiptDB.id == receipt_id).first()
+    if not db_receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    # Update the main receipt fields
+    db_receipt.store_name = updated_data.store_name
+    db_receipt.date = updated_data.date
+    db_receipt.subtotal = updated_data.subtotal
+    db_receipt.tax_amount = updated_data.tax_amount
+    db_receipt.discount_amount = updated_data.discount_amount
+    db_receipt.total_amount = updated_data.total_amount
+
+    # Update the items 
+    # (The safest way is to delete the old items and insert the newly edited ones)
+    db.query(models.ItemDB).filter(models.ItemDB.receipt_id == receipt_id).delete()
+    
+    for item in updated_data.items:
+        db_item = models.ItemDB(receipt_id=receipt_id, name=item.name, price=item.price)
+        db.add(db_item)
+
+    # Save everything
+    db.commit()
+    db.refresh(db_receipt)
+    
+    return db_receipt
