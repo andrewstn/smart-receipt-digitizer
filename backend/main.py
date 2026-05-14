@@ -45,6 +45,9 @@ class ReceiptItemSchema(BaseModel):
     name: str
     price: float
 
+    class Config:
+        from_attributes = True # Allows reading from SQLAlchemy
+
 class ReceiptSchema(BaseModel):
     store_name: str
     date: Optional[str] = None
@@ -54,11 +57,11 @@ class ReceiptSchema(BaseModel):
     discount_amount: Optional[float] = 0.0
     total_amount: float
 
-# Schema for outputting DB records (includes the auto-generated ID)
 class ReceiptResponse(ReceiptSchema):
     id: int
+
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # FastAPI Setup
 app = FastAPI(title="Smart Receipt API")
@@ -72,14 +75,14 @@ app.add_middleware(
 )
 
 # Get all receipts endpoint
-@app.get("/api/receipts")
+@app.get("/api/receipts", response_model=List[ReceiptResponse])
 def get_all_receipts(db: Session = Depends(get_db)):
     """Fetches all saved receipts from the database."""
     receipts = db.query(models.ReceiptDB).order_by(models.ReceiptDB.id.desc()).all()
     return receipts
 
-# Extract receipt data from uploaded image and save to database
-@app.post("/api/extract")
+# --- UPDATE: Add response_model=ReceiptResponse ---
+@app.post("/api/extract", response_model=ReceiptResponse)
 async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         contents = await file.read()
