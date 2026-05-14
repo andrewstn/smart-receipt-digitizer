@@ -219,3 +219,7 @@ __marimo__/
 
 # Example Images
 receipt.jpg
+
+# Database file
+*.db
+*.sqlite3
