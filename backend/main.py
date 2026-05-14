@@ -29,11 +29,11 @@ class ReceiptItem(BaseModel):
 
 class Receipt(BaseModel):
     store_name: str
-    date: Optional[str]
+    date: Optional[str] = None
     items: List[ReceiptItem]
     subtotal: float
     tax_amount: float
-    discount_amount: float
+    discount_amount: Optional[float] = 0.0
     total_amount: float
 
 app = FastAPI(title="Smart Receipt API")
