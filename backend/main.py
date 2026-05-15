@@ -13,9 +13,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 import json
 
+
 # Database Imports
 import models
 from database import engine, SessionLocal
+from sqlalchemy import or_
 
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -74,12 +76,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get all receipts endpoint
+# Get all receipts with optional search
 @app.get("/api/receipts", response_model=List[ReceiptResponse])
-def get_all_receipts(db: Session = Depends(get_db)):
-    """Fetches all saved receipts from the database."""
-    receipts = db.query(models.ReceiptDB).order_by(models.ReceiptDB.id.desc()).all()
-    return receipts
+def get_all_receipts(search: Optional[str] = None, db: Session = Depends(get_db)):
+    """Fetches receipts, optionally filtering by store, date, or item name."""
+    query = db.query(models.ReceiptDB)
+    
+    if search:
+        search_term = f"%{search}%"
+        # Join the Items table so we can search deep inside the receipt
+        query = query.join(models.ItemDB).filter(
+            or_(
+                models.ReceiptDB.store_name.ilike(search_term),
+                models.ReceiptDB.date.ilike(search_term),
+                models.ItemDB.name.ilike(search_term)
+            )
+        ).distinct() # Use distinct so a receipt isn't returned twice if two items match
+        
+    return query.order_by(models.ReceiptDB.id.desc()).all()
+
+
+# Analytics endpoint
+@app.get("/api/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    """Crunches the math for the frontend dashboard."""
+    receipts = db.query(models.ReceiptDB).all()
+    
+    total_spent = sum(r.total_amount for r in receipts if r.total_amount)
+    
+    spend_by_store = {}
+    spend_by_date = {}
+    
+    for r in receipts:
+        store = r.store_name or "Unknown"
+        date = r.date or "Unknown"
+        amt = r.total_amount or 0
+        
+        spend_by_store[store] = spend_by_store.get(store, 0) + amt
+        spend_by_date[date] = spend_by_date.get(date, 0) + amt
+        
+    # Format the dictionaries into the exact array structure Recharts needs
+    store_data = [{"name": k, "amount": v} for k, v in sorted(spend_by_store.items(), key=lambda item: item[1], reverse=True)]
+    date_data = [{"name": k, "amount": v} for k, v in sorted(spend_by_date.items())]
+    
+    return {
+        "totalSpent": total_spent,
+        "spendByStore": store_data,
+        "spendByDate": date_data
+    }
 
 # Extract receipt endpoint
 @app.post("/api/extract", response_model=ReceiptResponse)

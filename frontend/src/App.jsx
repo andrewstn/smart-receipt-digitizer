@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
-// Receipt Card Component
+// ReceiptCard component to display and edit individual receipts
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
@@ -66,7 +67,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
 
       if (response.ok) {
         setIsEditing(false);
-        onRefresh();
+        onRefresh(); // Refresh parent data!
       } else {
         setValidationError("Failed to save changes to the database.");
       }
@@ -208,7 +209,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
         {showWarning && !validationError && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            <p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up.</p>
+            <p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up. You can still save if this matches the physical receipt.</p>
           </div>
         )}
 
@@ -221,63 +222,139 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   );
 };
 
-// Main App Component
+// AnalyticsTab component to display spending analytics with charts
+const AnalyticsTab = ({ analyticsData }) => {
+  if (!analyticsData || analyticsData.totalSpent === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+        <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+        <h3 className="mt-2 text-sm font-medium text-slate-900">No data available</h3>
+        <p className="mt-1 text-sm text-slate-500">Upload some receipts to see your spending analytics.</p>
+      </div>
+    );
+  }
+
+  const { totalSpent, spendByDate, spendByStore } = analyticsData;
+  const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Total Extracted Value</h3>
+        <p className="mt-2 text-4xl font-extrabold text-indigo-600">${totalSpent.toFixed(2)}</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Spending by Date</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={spendByDate} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
+                <Tooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value) => [`$${value.toFixed(2)}`, 'Spent']} />
+                <Bar dataKey="amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Spending by Store</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={spendByStore} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="amount">
+                  {spendByStore.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value) => [`$${value.toFixed(2)}`, 'Spent']} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3 justify-center">
+            {spendByStore.slice(0, 6).map((entry, index) => (
+              <div key={index} className="flex items-center gap-1.5 text-sm text-slate-600">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                {entry.name}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main app component
 function App() {
-  const [file, setFile] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [currentReceipt, setCurrentReceipt] = useState(null)
-  const [history, setHistory] = useState([])
-  const [error, setError] = useState(null)
-
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [currentReceipt, setCurrentReceipt] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("receipts");
 
-  useEffect(() => { fetchHistory() }, [])
+  // Fetch history when search term changes or app loads
+  useEffect(() => { 
+    fetchHistory();
+  }, [searchTerm]);
+
+  // Fetch analytics when app loads
+  useEffect(() => {
+    fetchAnalytics();
+  }, []);
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/receipts')
-      if (res.ok) setHistory(await res.json())
-    } catch (err) { console.error("Failed to load history", err) }
-  }
+      const url = searchTerm 
+        ? `http://localhost:8000/api/receipts?search=${encodeURIComponent(searchTerm)}`
+        : 'http://localhost:8000/api/receipts';
+        
+      const res = await fetch(url);
+      if (res.ok) setHistory(await res.json());
+    } catch (err) { console.error("Failed to load history", err); }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/analytics');
+      if (res.ok) setAnalyticsData(await res.json());
+    } catch (err) { console.error("Failed to load analytics", err); }
+  };
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0])
-    setCurrentReceipt(null)
-    setError(null)
-  }
+    setFile(e.target.files[0]);
+    setCurrentReceipt(null);
+    setError(null);
+  };
 
   const handleUpload = async () => {
-    if (!file) return
-    setLoading(true)
-    setError(null)
-    const formData = new FormData()
-    formData.append('file', file)
+    if (!file) return;
+    setLoading(true);
+    setError(null);
+    const formData = new FormData();
+    formData.append('file', file);
     try {
-      const response = await fetch('http://localhost:8000/api/extract', { method: 'POST', body: formData })
-      if (!response.ok) throw new Error('Failed to process image')
-      const data = await response.json()
-      setCurrentReceipt(data)
-      fetchHistory()
-    } catch (err) { setError(err.message) } finally { setLoading(false) }
-  }
+      const response = await fetch('http://localhost:8000/api/extract', { method: 'POST', body: formData });
+      if (!response.ok) throw new Error('Failed to process image');
+      const data = await response.json();
+      setCurrentReceipt(data);
+      fetchHistory();
+      fetchAnalytics(); // Also refresh analytics after a new upload!
+      setActiveTab("receipts");
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
 
-  // Filtering logic for search functionality:
-  // We filter the history array before we map over it to render the cards.
-  const filteredHistory = history.filter(receipt => {
-    if (!searchTerm) return true; // If search is empty, show everything
-    
-    const term = searchTerm.toLowerCase();
-    
-    // Check Store Name
-    const matchStore = receipt.store_name?.toLowerCase().includes(term);
-    // Check Date
-    const matchDate = receipt.date?.toLowerCase().includes(term);
-    // Check every item inside the receipt
-    const matchItems = receipt.items?.some(item => item.name?.toLowerCase().includes(term));
-    
-    // If any of these match, keep the receipt in the list
-    return matchStore || matchDate || matchItems;
-  });
+  // We wrap fetchHistory so ReceiptCard can trigger both refreshes
+  const handleDataRefresh = () => {
+    fetchHistory();
+    fetchAnalytics();
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -315,59 +392,71 @@ function App() {
           </div>
         </div>
 
-        <div className="lg:col-span-8 space-y-8">
-          {currentReceipt && (
-            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <h2 className="text-xl font-extrabold text-slate-900 mb-4">Latest Scan</h2>
-              <ReceiptCard receipt={currentReceipt} isNew={true} onRefresh={fetchHistory} />
-            </section>
-          )}
-          
-          {history.length > 0 && (
-            <section>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-extrabold text-slate-900">Receipt History</h2>
-                  <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{filteredHistory.length} records</span>
-                </div>
-                
-                {/* NEW: Search Bar UI */}
-                <div className="relative w-full sm:w-72">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Search stores, items, or dates..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
-                  />
-                  {searchTerm && (
-                    <button 
-                      onClick={() => setSearchTerm('')}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-4">
-                {filteredHistory.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
-                  <ReceiptCard key={receipt.id} receipt={receipt} isNew={false} onRefresh={fetchHistory} />
-                ))}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="flex border-b border-slate-200">
+            <button 
+              onClick={() => setActiveTab("receipts")}
+              className={`pb-4 px-4 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeTab === "receipts" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+              My Receipts
+            </button>
+            <button 
+              onClick={() => setActiveTab("analytics")}
+              className={`pb-4 px-4 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeTab === "analytics" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+              Analytics
+            </button>
+          </div>
 
-                {filteredHistory.length === 0 && searchTerm && (
-                  <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
-                    <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <h3 className="mt-2 text-sm font-medium text-slate-900">No matching receipts</h3>
-                    <p className="mt-1 text-sm text-slate-500">We couldn't find anything matching "{searchTerm}".</p>
+          {activeTab === "analytics" ? (
+            <AnalyticsTab analyticsData={analyticsData} />
+          ) : (
+            <div className="space-y-8">
+              {currentReceipt && (
+                <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <h2 className="text-xl font-extrabold text-slate-900 mb-4">Latest Scan</h2>
+                  <ReceiptCard receipt={currentReceipt} isNew={true} onRefresh={handleDataRefresh} />
+                </section>
+              )}
+              
+              {history.length > 0 && (
+                <section>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{history.length} records</span>
+                    </div>
+                    
+                    <div className="relative w-full sm:w-72">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                      </div>
+                      <input type="text" placeholder="Search stores, items, or dates..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow" />
+                      {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            </section>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    {history.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
+                      <ReceiptCard key={receipt.id} receipt={receipt} isNew={false} onRefresh={handleDataRefresh} />
+                    ))}
+
+                    {history.length === 0 && searchTerm && (
+                      <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+                        <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <h3 className="mt-2 text-sm font-medium text-slate-900">No matching receipts</h3>
+                        <p className="mt-1 text-sm text-slate-500">We couldn't find anything matching "{searchTerm}".</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+            </div>
           )}
         </div>
       </main>
