@@ -9,7 +9,7 @@ from PIL import Image
 # AI Imports
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 import json
 
@@ -58,6 +58,54 @@ class ReceiptSchema(BaseModel):
     tax_amount: float
     discount_amount: Optional[float] = 0.0
     total_amount: float
+
+    # Validators to clean up AI output before saving to DB
+    @field_validator('store_name', mode='before')
+    @classmethod
+    def clean_store_name(cls, value: str) -> str:
+        if not value:
+            return "Unknown Store"
+            
+        # 1. Split by dash and take the first part ("Target - Location" -> "Target ")
+        clean_name = value.split('-')[0]
+        # 2. Remove common store number formats like "#1234"
+        clean_name = clean_name.split('#')[0]
+        # 3. Strip trailing whitespace and convert to Title Case ("TARGET " -> "Target")
+        return clean_name.strip().title()
+
+    @field_validator('date', mode='before')
+    @classmethod
+    def clean_date(cls, value: str) -> Optional[str]:
+        if not value or value.strip() == "":
+            return None
+            
+        value = value.strip()
+        
+        # Unify the separators (turn slashes into dashes)
+        if "/" in value:
+            value = value.replace("/", "-")
+            
+        parts = value.split("-")
+        
+        if len(parts) == 3:
+            try:
+                # Check if the AI gave us YYYY first
+                if len(parts[0]) == 4:
+                    year, month, day = parts
+                else:
+                    # Otherwise, assume it gave us MM-DD-YYYY or MM-DD-YY
+                    month, day, year = parts
+                    
+                # Fix 2-digit years (e.g., '26' becomes '2026')
+                if len(year) == 2:
+                    year = f"20{year}"
+                    
+                # Force the final output strictly to MM-DD-YYYY with zero-padding
+                return f"{month.zfill(2)}-{day.zfill(2)}-{year}"
+            except Exception:
+                pass # If parsing fails, fall back to whatever the AI gave us
+                
+        return value
 
 class ReceiptResponse(ReceiptSchema):
     id: int
@@ -132,7 +180,10 @@ async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(ge
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
 
-        prompt = "Extract the receipt data from this image."
+        prompt = "Extract the receipt data from this image." \
+        "CRITICAL FORMATTING RULES: " \
+        "1. Clean store names: Remove location identifiers, store numbers, or city names (e.g., convert 'Target - Location' or 'TARGET #1234' to simply 'Target'). Format in Title Case. " \
+        "2. Clean dates: Always return the date in the exact format MM-DD-YYYY. If no date is found, return null. "
         
         response = client.models.generate_content(
             model='gemini-2.5-flash',
