@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Toaster, toast } from 'react-hot-toast'; // <-- NEW: Import the Toaster
 import ReceiptCard from './components/ReceiptCard';
 import AnalyticsTab from './components/AnalyticsTab';
 
@@ -8,7 +9,6 @@ function App() {
   const [currentReceipt, setCurrentReceipt] = useState(null);
   const [history, setHistory] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
-  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("receipts");
 
@@ -28,34 +28,23 @@ function App() {
 
   const fetchHistory = async (pageToFetch = 0, isReset = false, currentSearch = searchTerm) => {
     if (!isReset) setIsLoadingMore(true);
-    
     try {
       const limit = 10;
       const skip = pageToFetch * limit;
-      
       let url = `http://localhost:8000/api/receipts?skip=${skip}&limit=${limit}`;
-      if (currentSearch) {
-        url += `&search=${encodeURIComponent(currentSearch)}`;
-      }
+      if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
         
       const res = await fetch(url);
       if (res.ok) {
         const newData = await res.json();
-        
-        if (newData.length < limit) {
-          setHasMore(false);
-        } else {
-          setHasMore(true);
-        }
+        if (newData.length < limit) setHasMore(false);
+        else setHasMore(true);
 
-        if (isReset) {
-          setHistory(newData);
-        } else {
-          setHistory(prev => [...prev, ...newData]);
-        }
+        if (isReset) setHistory(newData);
+        else setHistory(prev => [...prev, ...newData]);
       }
     } catch (err) { 
-      console.error("Failed to load history", err); 
+      toast.error("Failed to fetch receipt history."); // <-- NEW
     } finally {
       setIsLoadingMore(false);
     }
@@ -71,33 +60,49 @@ function App() {
     try {
       const res = await fetch('http://localhost:8000/api/analytics');
       if (res.ok) setAnalyticsData(await res.json());
-    } catch (err) { console.error("Failed to load analytics", err); }
+    } catch (err) { 
+      console.error("Analytics fetch failed", err); 
+    }
   };
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setCurrentReceipt(null);
-    setError(null);
   };
 
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
-    setError(null);
     const formData = new FormData();
     formData.append('file', file);
+    
+    // NEW: Wrap the upload in a toast promise!
+    const uploadPromise = fetch('http://localhost:8000/api/extract', { method: 'POST', body: formData })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to process image');
+        return res.json();
+      });
+
+    toast.promise(uploadPromise, {
+      loading: 'Digitizing receipt with AI...',
+      success: 'Data extracted successfully!',
+      error: 'Failed to extract data. Is the backend running?',
+    });
+
     try {
-      const response = await fetch('http://localhost:8000/api/extract', { method: 'POST', body: formData });
-      if (!response.ok) throw new Error('Failed to process image');
-      const data = await response.json();
+      const data = await uploadPromise;
       setCurrentReceipt(data);
-      
       setPage(0);
       setHasMore(true);
       fetchHistory(0, true, searchTerm);
       fetchAnalytics();
       setActiveTab("receipts");
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+    } catch (err) { 
+      // Error handled by toast.promise automatically
+    } finally { 
+      setLoading(false); 
+      setFile(null); // Clear the file input after successful upload
+    }
   };
 
   const handleDataRefresh = (action, payload) => {
@@ -116,6 +121,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {/* NEW: The Toaster Component. This controls where and how toasts appear globally */}
+      <Toaster 
+        position="bottom-right" 
+        toastOptions={{ 
+          style: { borderRadius: '10px', background: '#333', color: '#fff', fontSize: '14px' },
+          success: { duration: 3000, iconTheme: { primary: '#10b981', secondary: '#fff' } },
+          error: { duration: 4000, iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+        }} 
+      />
+
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between h-16 items-center">
           <div className="flex items-center gap-2">
@@ -146,7 +161,6 @@ function App() {
             <button onClick={handleUpload} disabled={!file || loading} className={`mt-6 w-full flex justify-center py-3 px-4 rounded-xl text-sm font-bold text-white transition-all ${!file || loading ? 'bg-slate-300 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:-translate-y-0.5'}`}>
               {loading ? 'Digitizing...' : 'Extract Data'}
             </button>
-            {error && <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-100 text-red-600 text-sm font-medium">{error}</div>}
           </div>
         </div>
 
@@ -173,7 +187,6 @@ function App() {
                 </section>
               )}
               
-              {/* --- UPGRADED: Check for empty history to show the Zero State --- */}
               {history.length > 0 ? (
                 <section>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
@@ -227,7 +240,6 @@ function App() {
                   )}
                 </section>
               ) : (
-                /* --- NEW: Zero State for completely empty history --- */
                 !currentReceipt && (
                   <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300 animate-in fade-in duration-500">
                     <div className="bg-indigo-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">

@@ -1,11 +1,11 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast'; // <-- NEW: Import the toast library!
 
 const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [validationError, setValidationError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(isNew || false);
 
   const MAX_ITEMS = 50;
@@ -13,61 +13,61 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: name.includes('amount') || name === 'subtotal' ? parseFloat(value) || 0 : value });
-    setValidationError(null);
   };
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
     newItems[index] = { ...newItems[index], [field]: field === 'price' ? parseFloat(value) || 0 : value };
     setFormData({ ...formData, items: newItems });
-    setValidationError(null);
   };
 
   const handleAddItem = () => {
     if (formData.items?.length >= MAX_ITEMS) {
-      setValidationError(`Maximum limit of ${MAX_ITEMS} items reached.`);
+      toast.error(`Maximum limit of ${MAX_ITEMS} items reached.`); // <-- UPGRADED
       return;
     }
     setFormData({ ...formData, items: [...(formData.items || []), { name: '', price: 0 }] });
-    setValidationError(null);
   };
 
   const handleRemoveItem = (indexToRemove) => {
     if (formData.items?.length <= 1) {
-      setValidationError("A receipt must have at least one line item.");
+      toast.error("A receipt must have at least one line item."); // <-- UPGRADED
       return;
     }
     setFormData({ ...formData, items: formData.items.filter((_, index) => index !== indexToRemove) });
-    setValidationError(null);
   };
 
   const handleSave = async () => {
     const hasBlankItems = formData.items?.some(item => !item.name || item.name.trim() === '');
     if (hasBlankItems) {
-      setValidationError("All line items must have a name. Please fill them in or remove the blank rows.");
+      toast.error("All line items must have a name."); // <-- UPGRADED
       return;
     }
 
     setIsSaving(true);
-    setValidationError(null);
+    
+    // NEW: We can use toast.promise to automatically handle loading, success, and error states!
+    const savePromise = fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error("Failed to save to database");
+      return res.json();
+    });
+
+    toast.promise(savePromise, {
+      loading: 'Saving changes...',
+      success: 'Receipt updated successfully!',
+      error: 'Failed to save changes.',
+    });
 
     try {
-      const response = await fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        const updatedReceipt = await response.json(); // <-- NEW: Grab the updated data
-        setIsEditing(false);
-        onRefresh('update', updatedReceipt); // <-- NEW: Tell App.jsx it was updated!
-      } else {
-        setValidationError("Failed to save changes to the database.");
-      }
+      const updatedReceipt = await savePromise;
+      setIsEditing(false);
+      onRefresh('update', updatedReceipt);
     } catch (error) {
       console.error("Error saving:", error);
-      setValidationError("Network error while saving.");
     } finally {
       setIsSaving(false);
     }
@@ -80,19 +80,24 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     }
 
     setIsDeleting(true);
-    try {
-      const response = await fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
-        method: 'DELETE',
-      });
+    
+    const deletePromise = fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
+      method: 'DELETE',
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to delete");
+    });
 
-      if (response.ok) {
-        onRefresh('delete', receipt.id); // <-- NEW: Tell App.jsx it was deleted!
-      } else {
-        alert("Failed to delete receipt from the database.");
-      }
+    toast.promise(deletePromise, {
+      loading: 'Deleting...',
+      success: 'Receipt permanently deleted.',
+      error: 'Failed to delete receipt.',
+    });
+
+    try {
+      await deletePromise;
+      onRefresh('delete', receipt.id);
     } catch (error) {
       console.error("Error deleting:", error);
-      alert("Network error while deleting.");
     } finally {
       setIsDeleting(false);
     }
@@ -169,10 +174,12 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           <div><label className="block text-xs text-slate-500 mb-1">Tax</label><input type="number" step="0.01" name="tax_amount" value={formData.tax_amount || 0} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-md sm:text-sm" /></div>
           <div><label className={`block text-xs font-bold mb-1 ${isTotalOff ? 'text-amber-600' : 'text-slate-900'}`}>Total {isTotalOff && `(Expected $${expectedTotal.toFixed(2)})`}</label><input type="number" step="0.01" name="total_amount" value={formData.total_amount || 0} onChange={handleChange} className={`w-full px-3 py-2 border rounded-md sm:text-sm font-bold ${isTotalOff ? 'border-amber-400 bg-amber-50 focus:border-amber-500' : 'border-indigo-400 bg-indigo-50'}`} /></div>
         </div>
-        {validationError && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><p className="text-sm font-medium text-red-800">{validationError}</p></div>}
-        {showWarning && !validationError && <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg><p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up.</p></div>}
+        
+        {/* Note: I kept the math warning inline because it's helpful persistent feedback, but removed the red error banner! */}
+        {showWarning && <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg><p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up.</p></div>}
+        
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={() => { setIsEditing(false); setFormData(receipt); setValidationError(null); }} className="px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Cancel</button>
+          <button onClick={() => { setIsEditing(false); setFormData(receipt); }} className="px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Cancel</button>
           <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">{isSaving ? 'Saving...' : 'Save & Confirm'}</button>
         </div>
       </div>
