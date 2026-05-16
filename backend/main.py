@@ -17,7 +17,7 @@ import json
 # Database Imports
 import models
 from database import engine, SessionLocal
-from sqlalchemy import or_
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, or_, func
 
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -124,53 +124,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get all receipts with optional search
+# Get receipts endpoint with search and pagination
 @app.get("/api/receipts", response_model=List[ReceiptResponse])
-def get_all_receipts(search: Optional[str] = None, db: Session = Depends(get_db)):
-    """Fetches receipts, optionally filtering by store, date, or item name."""
+def get_all_receipts(
+    search: Optional[str] = None, 
+    skip: int = 0,     # How many records to skip
+    limit: int = 10,   # Maximum records to return per request
+    db: Session = Depends(get_db)
+):
+    """Fetches receipts with search filtering and pagination."""
     query = db.query(models.ReceiptDB)
     
     if search:
         search_term = f"%{search}%"
-        # Join the Items table so we can search deep inside the receipt
         query = query.join(models.ItemDB).filter(
             or_(
                 models.ReceiptDB.store_name.ilike(search_term),
                 models.ReceiptDB.date.ilike(search_term),
                 models.ItemDB.name.ilike(search_term)
             )
-        ).distinct() # Use distinct so a receipt isn't returned twice if two items match
-        
-    return query.order_by(models.ReceiptDB.id.desc()).all()
+        ).distinct()
+    
+    return query.order_by(models.ReceiptDB.id.desc()).offset(skip).limit(limit).all()
 
 
 # Analytics endpoint
 @app.get("/api/analytics")
 def get_analytics(db: Session = Depends(get_db)):
-    """Crunches the math for the frontend dashboard."""
-    receipts = db.query(models.ReceiptDB).all()
+    """Calculates lifetime analytics directly in the SQLite engine for maximum performance."""
     
-    total_spent = sum(r.total_amount for r in receipts if r.total_amount)
+    # Lifetime Total (Calculated in SQL)
+    total_spent = db.query(func.sum(models.ReceiptDB.total_amount)).scalar() or 0.0
     
-    spend_by_store = {}
-    spend_by_date = {}
+    # Spend by Store (Grouped and summed in SQL)
+    store_results = db.query(
+        models.ReceiptDB.store_name, 
+        func.sum(models.ReceiptDB.total_amount).label('amount')
+    ).group_by(models.ReceiptDB.store_name).all()
     
-    for r in receipts:
-        store = r.store_name or "Unknown"
-        date = r.date or "Unknown"
-        amt = r.total_amount or 0
-        
-        spend_by_store[store] = spend_by_store.get(store, 0) + amt
-        spend_by_date[date] = spend_by_date.get(date, 0) + amt
-        
-    # Format the dictionaries into the exact array structure Recharts needs
-    store_data = [{"name": k, "amount": v} for k, v in sorted(spend_by_store.items(), key=lambda item: item[1], reverse=True)]
-    date_data = [{"name": k, "amount": v} for k, v in sorted(spend_by_date.items())]
+    # Clean up the output for the React Donut Chart
+    spend_by_store = [
+        {"name": row[0] or "Unknown", "amount": float(row[1] or 0)} 
+        for row in store_results
+    ]
+    spend_by_store.sort(key=lambda x: x["amount"], reverse=True) # Sort largest to smallest
+    
+    # Spend by Date (Grouped and summed in SQL)
+    date_results = db.query(
+        models.ReceiptDB.date, 
+        func.sum(models.ReceiptDB.total_amount).label('amount')
+    ).group_by(models.ReceiptDB.date).all()
+    
+    # Clean up the output for the React Bar Chart
+    spend_by_date = [
+        {"name": row[0] or "Unknown", "amount": float(row[1] or 0)} 
+        for row in date_results
+    ]
+    spend_by_date.sort(key=lambda x: x["name"]) # Sort chronologically
     
     return {
-        "totalSpent": total_spent,
-        "spendByStore": store_data,
-        "spendByDate": date_data
+        "totalSpent": float(total_spent),
+        "spendByStore": spend_by_store,
+        "spendByDate": spend_by_date
     }
 
 # Extract receipt endpoint

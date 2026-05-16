@@ -12,23 +12,63 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("receipts");
 
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // When the search term changes, completely reset the page and data
   useEffect(() => { 
-    fetchHistory();
+    setPage(0);
+    setHasMore(true);
+    fetchHistory(0, true, searchTerm);
   }, [searchTerm]);
 
+  // Fetch analytics purely on initial load
   useEffect(() => {
     fetchAnalytics();
   }, []);
 
-  const fetchHistory = async () => {
+  // UPGRADED: Now accepts page numbers and handles appending data
+  const fetchHistory = async (pageToFetch = 0, isReset = false, currentSearch = searchTerm) => {
+    if (!isReset) setIsLoadingMore(true);
+    
     try {
-      const url = searchTerm 
-        ? `http://localhost:8000/api/receipts?search=${encodeURIComponent(searchTerm)}`
-        : 'http://localhost:8000/api/receipts';
+      const limit = 10;
+      const skip = pageToFetch * limit;
+      
+      let url = `http://localhost:8000/api/receipts?skip=${skip}&limit=${limit}`;
+      if (currentSearch) {
+        url += `&search=${encodeURIComponent(currentSearch)}`;
+      }
         
       const res = await fetch(url);
-      if (res.ok) setHistory(await res.json());
-    } catch (err) { console.error("Failed to load history", err); }
+      if (res.ok) {
+        const newData = await res.json();
+        
+        // If the backend returns fewer than our limit, we hit the end of the database!
+        if (newData.length < limit) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
+
+        if (isReset) {
+          setHistory(newData); // Replace data (for searches or fresh loads)
+        } else {
+          setHistory(prev => [...prev, ...newData]); // Append data (for scrolling)
+        }
+      }
+    } catch (err) { 
+      console.error("Failed to load history", err); 
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchHistory(nextPage, false, searchTerm);
   };
 
   const fetchAnalytics = async () => {
@@ -55,23 +95,28 @@ function App() {
       if (!response.ok) throw new Error('Failed to process image');
       const data = await response.json();
       setCurrentReceipt(data);
-      fetchHistory();
+      
+      // Reset list to show fresh data
+      setPage(0);
+      setHasMore(true);
+      fetchHistory(0, true, searchTerm);
       fetchAnalytics();
       setActiveTab("receipts");
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
-  // --- UPGRADED: Listen for specific actions from the child components ---
   const handleDataRefresh = (action, payload) => {
     if (currentReceipt) {
         if (action === 'delete' && currentReceipt.id === payload) {
-            setCurrentReceipt(null); // Clear it if it was deleted!
+            setCurrentReceipt(null);
         } else if (action === 'update' && currentReceipt.id === payload.id) {
-            setCurrentReceipt(payload); // Update it if it was edited!
+            setCurrentReceipt(payload);
         }
     }
-    // Always refresh the backend data
-    fetchHistory();
+    // If something is deleted or edited, reset to page 0 so data doesn't get out of sync
+    setPage(0);
+    setHasMore(true);
+    fetchHistory(0, true, searchTerm);
     fetchAnalytics();
   };
 
@@ -138,7 +183,7 @@ function App() {
                 <section>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2.5 py-0.5 rounded-full">{history.length} records</span>
+                      <h2 className="text-xl font-extrabold text-slate-900">Receipt History</h2>
                     </div>
                     
                     <div className="relative w-full sm:w-72">
@@ -167,6 +212,24 @@ function App() {
                       </div>
                     )}
                   </div>
+                  
+                  {hasMore && history.length > 0 && (
+                    <div className="mt-8 flex justify-center">
+                      <button 
+                        onClick={handleLoadMore} 
+                        disabled={isLoadingMore}
+                        className="px-6 py-2.5 bg-white border border-slate-300 rounded-full text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoadingMore ? 'Loading...' : 'Load More Receipts'}
+                      </button>
+                    </div>
+                  )}
+                  
+                  {!hasMore && history.length > 0 && (
+                    <div className="mt-8 text-center text-sm text-slate-400">
+                      You've reached the end of your history.
+                    </div>
+                  )}
                 </section>
               )}
             </div>
