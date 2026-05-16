@@ -16,19 +16,16 @@ function App() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // When the search term changes, completely reset the page and data
   useEffect(() => { 
     setPage(0);
     setHasMore(true);
     fetchHistory(0, true, searchTerm);
   }, [searchTerm]);
 
-  // Fetch analytics purely on initial load
   useEffect(() => {
     fetchAnalytics();
   }, []);
 
-  // UPGRADED: Now accepts page numbers and handles appending data
   const fetchHistory = async (pageToFetch = 0, isReset = false, currentSearch = searchTerm) => {
     if (!isReset) setIsLoadingMore(true);
     
@@ -45,7 +42,6 @@ function App() {
       if (res.ok) {
         const newData = await res.json();
         
-        // If the backend returns fewer than our limit, we hit the end of the database!
         if (newData.length < limit) {
           setHasMore(false);
         } else {
@@ -53,9 +49,9 @@ function App() {
         }
 
         if (isReset) {
-          setHistory(newData); // Replace data (for searches or fresh loads)
+          setHistory(newData);
         } else {
-          setHistory(prev => [...prev, ...newData]); // Append data (for scrolling)
+          setHistory(prev => [...prev, ...newData]);
         }
       }
     } catch (err) { 
@@ -96,7 +92,6 @@ function App() {
       const data = await response.json();
       setCurrentReceipt(data);
       
-      // Reset list to show fresh data
       setPage(0);
       setHasMore(true);
       fetchHistory(0, true, searchTerm);
@@ -113,7 +108,6 @@ function App() {
             setCurrentReceipt(payload);
         }
     }
-    // If something is deleted or edited, reset to page 0 so data doesn't get out of sync
     setPage(0);
     setHasMore(true);
     fetchHistory(0, true, searchTerm);
@@ -179,7 +173,8 @@ function App() {
                 </section>
               )}
               
-              {history.length > 0 && (
+              {/* --- UPGRADED: Check for empty history to show the Zero State --- */}
+              {history.length > 0 ? (
                 <section>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                     <div className="flex items-center gap-3">
@@ -231,6 +226,17 @@ function App() {
                     </div>
                   )}
                 </section>
+              ) : (
+                /* --- NEW: Zero State for completely empty history --- */
+                !currentReceipt && (
+                  <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300 animate-in fade-in duration-500">
+                    <div className="bg-indigo-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="h-8 w-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">No receipts yet</h3>
+                    <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto">Upload your first receipt using the panel on the left to start tracking your expenses.</p>
+                  </div>
+                )
               )}
             </div>
           )}
