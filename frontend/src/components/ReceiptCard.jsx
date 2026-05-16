@@ -4,6 +4,9 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const [validationError, setValidationError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(isNew || false);
 
@@ -27,10 +30,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
       setValidationError(`Maximum limit of ${MAX_ITEMS} items reached.`);
       return;
     }
-    setFormData({
-      ...formData,
-      items: [...(formData.items || []), { name: '', price: 0 }]
-    });
+    setFormData({ ...formData, items: [...(formData.items || []), { name: '', price: 0 }] });
     setValidationError(null);
   };
 
@@ -39,10 +39,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
       setValidationError("A receipt must have at least one line item.");
       return;
     }
-    setFormData({
-      ...formData,
-      items: formData.items.filter((_, index) => index !== indexToRemove)
-    });
+    setFormData({ ...formData, items: formData.items.filter((_, index) => index !== indexToRemove) });
     setValidationError(null);
   };
 
@@ -77,6 +74,34 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     }
   };
 
+  // DELETE HANDLER:
+  const handleDelete = async (e) => {
+    e.stopPropagation(); // Stop the accordion from opening when clicking the trash can
+    
+    // Safety check!
+    if (!window.confirm(`Are you sure you want to permanently delete the receipt for ${receipt.store_name}?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/receipts/${receipt.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        onRefresh(); // Tell App.jsx to re-fetch the history!
+      } else {
+        alert("Failed to delete receipt from the database.");
+      }
+    } catch (error) {
+      console.error("Error deleting:", error);
+      alert("Network error while deleting.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const expectedSubtotal = formData.items?.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0) || 0;
   const expectedTotal = expectedSubtotal - (parseFloat(formData.discount_amount) || 0) + (parseFloat(formData.tax_amount) || 0);
   const isSubtotalOff = Math.abs(expectedSubtotal - (formData.subtotal || 0)) > 0.02;
@@ -94,8 +119,26 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
             </h3>
             <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">{receipt.date || 'No Date'} • Ref #{receipt.id}</div>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsExpanded(true); }} className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors">Edit Fix</button>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsExpanded(true); }} 
+              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
+            >
+              Edit
+            </button>
+            
+            <button 
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className={`p-1.5 rounded-md transition-colors ${isDeleting ? 'text-slate-300' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}
+              title="Delete Receipt"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+
+            <div className="w-px h-6 bg-slate-200 mx-1"></div> {/* Visual Divider */}
+
             <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
           </div>
         </div>
@@ -122,6 +165,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     );
   }
 
+  // EDIT MODE:
   return (
     <div className="bg-white rounded-xl shadow-lg border border-indigo-300 ring-2 ring-indigo-100 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-indigo-50">

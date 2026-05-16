@@ -258,3 +258,22 @@ def update_receipt(receipt_id: int, updated_data: ReceiptSchema, db: Session = D
     db.refresh(db_receipt)
     
     return db_receipt
+
+# Delete receipt endpoint
+@app.delete("/api/receipts/{receipt_id}")
+def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
+    """Deletes a receipt and all its line items."""
+    db_receipt = db.query(models.ReceiptDB).filter(models.ReceiptDB.id == receipt_id).first()
+    
+    if not db_receipt:
+        from fastapi import HTTPException # Just in case it's not imported at the top!
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    # 1. Delete all the line items first to prevent orphaned data
+    db.query(models.ItemDB).filter(models.ItemDB.receipt_id == receipt_id).delete()
+    
+    # 2. Delete the receipt itself
+    db.delete(db_receipt)
+    db.commit()
+    
+    return {"message": "Receipt successfully deleted"}
