@@ -4,9 +4,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(receipt);
   const [isSaving, setIsSaving] = useState(false);
-
   const [isDeleting, setIsDeleting] = useState(false);
-  
   const [validationError, setValidationError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(isNew || false);
 
@@ -61,8 +59,9 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
       });
 
       if (response.ok) {
+        const updatedReceipt = await response.json(); // <-- NEW: Grab the updated data
         setIsEditing(false);
-        onRefresh();
+        onRefresh('update', updatedReceipt); // <-- NEW: Tell App.jsx it was updated!
       } else {
         setValidationError("Failed to save changes to the database.");
       }
@@ -74,11 +73,8 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     }
   };
 
-  // DELETE HANDLER:
   const handleDelete = async (e) => {
-    e.stopPropagation(); // Stop the accordion from opening when clicking the trash can
-    
-    // Safety check!
+    e.stopPropagation();
     if (!window.confirm(`Are you sure you want to permanently delete the receipt for ${receipt.store_name}?`)) {
       return;
     }
@@ -90,7 +86,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
       });
 
       if (response.ok) {
-        onRefresh(); // Tell App.jsx to re-fetch the history!
+        onRefresh('delete', receipt.id); // <-- NEW: Tell App.jsx it was deleted!
       } else {
         alert("Failed to delete receipt from the database.");
       }
@@ -119,38 +115,20 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
             </h3>
             <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">{receipt.date || 'No Date'} • Ref #{receipt.id}</div>
           </div>
-
           <div className="flex items-center gap-3">
-            <button 
-              onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsExpanded(true); }} 
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors"
-            >
-              Edit
-            </button>
-            
-            <button 
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className={`p-1.5 rounded-md transition-colors ${isDeleting ? 'text-slate-300' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}
-              title="Delete Receipt"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsExpanded(true); }} className="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md transition-colors">Edit</button>
+            <button onClick={handleDelete} disabled={isDeleting} className={`p-1.5 rounded-md transition-colors ${isDeleting ? 'text-slate-300' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`} title="Delete Receipt">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
-
-            <div className="w-px h-6 bg-slate-200 mx-1"></div> {/* Visual Divider */}
-
+            <div className="w-px h-6 bg-slate-200 mx-1"></div>
             <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
           </div>
         </div>
-        
         {isExpanded && (
           <div className="px-6 py-5 animate-in slide-in-from-top-2 fade-in duration-200">
             <div className="space-y-3">
               {receipt.items?.map((item, index) => (
-                <div key={index} className="flex justify-between text-sm">
-                  <span className="text-slate-600">{item.name}</span>
-                  <span className="text-slate-900 font-semibold">${(item.price || 0).toFixed(2)}</span>
-                </div>
+                <div key={index} className="flex justify-between text-sm"><span className="text-slate-600">{item.name}</span><span className="text-slate-900 font-semibold">${(item.price || 0).toFixed(2)}</span></div>
               ))}
             </div>
             <div className="mt-6 pt-4 border-t border-dashed border-slate-200 space-y-2">
@@ -165,7 +143,6 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
     );
   }
 
-  // EDIT MODE:
   return (
     <div className="bg-white rounded-xl shadow-lg border border-indigo-300 ring-2 ring-indigo-100 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 bg-indigo-50">
@@ -193,7 +170,7 @@ const ReceiptCard = ({ receipt, isNew, onRefresh }) => {
           <div><label className={`block text-xs font-bold mb-1 ${isTotalOff ? 'text-amber-600' : 'text-slate-900'}`}>Total {isTotalOff && `(Expected $${expectedTotal.toFixed(2)})`}</label><input type="number" step="0.01" name="total_amount" value={formData.total_amount || 0} onChange={handleChange} className={`w-full px-3 py-2 border rounded-md sm:text-sm font-bold ${isTotalOff ? 'border-amber-400 bg-amber-50 focus:border-amber-500' : 'border-indigo-400 bg-indigo-50'}`} /></div>
         </div>
         {validationError && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><p className="text-sm font-medium text-red-800">{validationError}</p></div>}
-        {showWarning && !validationError && <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg><p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up. You can still save if this matches the physical receipt.</p></div>}
+        {showWarning && !validationError && <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2"><svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg><p className="text-sm text-amber-800"><strong>Math Discrepancy:</strong> The numbers entered do not perfectly add up.</p></div>}
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={() => { setIsEditing(false); setFormData(receipt); setValidationError(null); }} className="px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Cancel</button>
           <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">{isSaving ? 'Saving...' : 'Save & Confirm'}</button>

@@ -61,7 +61,16 @@ function App() {
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
-  const handleDataRefresh = () => {
+  // --- UPGRADED: Listen for specific actions from the child components ---
+  const handleDataRefresh = (action, payload) => {
+    if (currentReceipt) {
+        if (action === 'delete' && currentReceipt.id === payload) {
+            setCurrentReceipt(null); // Clear it if it was deleted!
+        } else if (action === 'update' && currentReceipt.id === payload.id) {
+            setCurrentReceipt(payload); // Update it if it was edited!
+        }
+    }
+    // Always refresh the backend data
     fetchHistory();
     fetchAnalytics();
   };
