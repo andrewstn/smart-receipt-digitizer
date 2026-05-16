@@ -1,8 +1,11 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import os
 import io
+import jwt
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -12,7 +15,6 @@ from google.genai import types
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
 import json
-
 
 # Database Imports
 import models
@@ -31,10 +33,8 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 # Setup Database
-# Creates the tables in receipts.db if they don't exist yet
 models.Base.metadata.create_all(bind=engine)
 
-# Dependency to get the DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -42,13 +42,37 @@ def get_db():
     finally:
         db.close()
 
-# Pydantic Schemas (For validating API Input/Output)
+#JWT Authentication Setup
+SECRET_KEY = "my_super_secret_portfolio_key" # Just for demo purposes
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """Protects routes from unauthenticated requests."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        return username
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+# Pydantic Schemas
 class ReceiptItemSchema(BaseModel):
     name: str
     price: float
 
     class Config:
-        from_attributes = True # Allows reading from SQLAlchemy
+        from_attributes = True
 
 class ReceiptSchema(BaseModel):
     store_name: str
@@ -59,18 +83,14 @@ class ReceiptSchema(BaseModel):
     discount_amount: Optional[float] = 0.0
     total_amount: float
 
-    # Validators to clean up AI output before saving to DB
     @field_validator('store_name', mode='before')
     @classmethod
     def clean_store_name(cls, value: str) -> str:
         if not value:
             return "Unknown Store"
             
-        # 1. Split by dash and take the first part ("Target - Location" -> "Target ")
         clean_name = value.split('-')[0]
-        # 2. Remove common store number formats like "#1234"
         clean_name = clean_name.split('#')[0]
-        # 3. Strip trailing whitespace and convert to Title Case ("TARGET " -> "Target")
         return clean_name.strip().title()
 
     @field_validator('date', mode='before')
@@ -80,8 +100,6 @@ class ReceiptSchema(BaseModel):
             return None
             
         value = value.strip()
-        
-        # Unify the separators (turn slashes into dashes)
         if "/" in value:
             value = value.replace("/", "-")
             
@@ -89,21 +107,17 @@ class ReceiptSchema(BaseModel):
         
         if len(parts) == 3:
             try:
-                # Check if the AI gave us YYYY first
                 if len(parts[0]) == 4:
                     year, month, day = parts
                 else:
-                    # Otherwise, assume it gave us MM-DD-YYYY or MM-DD-YY
                     month, day, year = parts
                     
-                # Fix 2-digit years (e.g., '26' becomes '2026')
                 if len(year) == 2:
                     year = f"20{year}"
                     
-                # Force the final output strictly to MM-DD-YYYY with zero-padding
                 return f"{month.zfill(2)}-{day.zfill(2)}-{year}"
             except Exception:
-                pass # If parsing fails, fall back to whatever the AI gave us
+                pass
                 
         return value
 
@@ -113,7 +127,7 @@ class ReceiptResponse(ReceiptSchema):
     class Config:
         from_attributes = True
 
-# FastAPI Setup
+# FastAPI App Initialization
 app = FastAPI(title="Smart Receipt API")
 
 app.add_middleware(
@@ -124,13 +138,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get receipts endpoint with search and pagination
+# Login endpoint
+@app.post("/api/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    # Hardcoded demo user for our portfolio piece
+    if form_data.username != "demo" or form_data.password != "password":
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    access_token = create_access_token(data={"sub": form_data.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+# GET all receipts (Protected)
 @app.get("/api/receipts", response_model=List[ReceiptResponse])
 def get_all_receipts(
     search: Optional[str] = None, 
-    skip: int = 0,     # How many records to skip
-    limit: int = 10,   # Maximum records to return per request
-    db: Session = Depends(get_db)
+    skip: int = 0,     
+    limit: int = 10,   
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user) # <-- Protected
 ):
     """Fetches receipts with search filtering and pagination."""
     query = db.query(models.ReceiptDB)
@@ -148,39 +174,34 @@ def get_all_receipts(
     return query.order_by(models.ReceiptDB.id.desc()).offset(skip).limit(limit).all()
 
 
-# Analytics endpoint
+# Analytics endpoint (Protected)
 @app.get("/api/analytics")
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """Calculates lifetime analytics directly in the SQLite engine for maximum performance."""
     
-    # Lifetime Total (Calculated in SQL)
     total_spent = db.query(func.sum(models.ReceiptDB.total_amount)).scalar() or 0.0
     
-    # Spend by Store (Grouped and summed in SQL)
     store_results = db.query(
         models.ReceiptDB.store_name, 
         func.sum(models.ReceiptDB.total_amount).label('amount')
     ).group_by(models.ReceiptDB.store_name).all()
     
-    # Clean up the output for the React Donut Chart
     spend_by_store = [
         {"name": row[0] or "Unknown", "amount": float(row[1] or 0)} 
         for row in store_results
     ]
-    spend_by_store.sort(key=lambda x: x["amount"], reverse=True) # Sort largest to smallest
+    spend_by_store.sort(key=lambda x: x["amount"], reverse=True) 
     
-    # Spend by Date (Grouped and summed in SQL)
     date_results = db.query(
         models.ReceiptDB.date, 
         func.sum(models.ReceiptDB.total_amount).label('amount')
     ).group_by(models.ReceiptDB.date).all()
     
-    # Clean up the output for the React Bar Chart
     spend_by_date = [
         {"name": row[0] or "Unknown", "amount": float(row[1] or 0)} 
         for row in date_results
     ]
-    spend_by_date.sort(key=lambda x: x["name"]) # Sort chronologically
+    spend_by_date.sort(key=lambda x: x["name"]) 
     
     return {
         "totalSpent": float(total_spent),
@@ -188,9 +209,9 @@ def get_analytics(db: Session = Depends(get_db)):
         "spendByDate": spend_by_date
     }
 
-# Extract receipt endpoint
+# Extract receipt endpoint (Protected)
 @app.post("/api/extract", response_model=ReceiptResponse)
-async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     try:
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
@@ -211,7 +232,6 @@ async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(ge
         
         receipt_data = json.loads(response.text)
 
-        # Create the main receipt record
         db_receipt = models.ReceiptDB(
             store_name=receipt_data["store_name"],
             date=receipt_data.get("date"),
@@ -220,12 +240,10 @@ async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(ge
             discount_amount=receipt_data.get("discount_amount", 0.0),
             total_amount=receipt_data["total_amount"]
         )
-        # Add the receipt to the session and commit to get an ID for database relationships
         db.add(db_receipt)
         db.commit()
-        db.refresh(db_receipt) # Get the new ID
+        db.refresh(db_receipt)
 
-        # Create the item records and link them to the receipt
         for item in receipt_data["items"]:
             db_item = models.ItemDB(
                 receipt_id=db_receipt.id,
@@ -235,24 +253,20 @@ async def extract_receipt(file: UploadFile = File(...), db: Session = Depends(ge
             db.add(db_item)
         
         db.commit()
-        db.refresh(db_receipt) # Refresh to get the linked items
+        db.refresh(db_receipt)
 
         return db_receipt
-
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
 @app.put("/api/receipts/{receipt_id}", response_model=ReceiptResponse)
-def update_receipt(receipt_id: int, updated_data: ReceiptSchema, db: Session = Depends(get_db)):
+def update_receipt(receipt_id: int, updated_data: ReceiptSchema, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """Updates an existing receipt and its items in the database."""
-    
-    # Find the existing receipt
     db_receipt = db.query(models.ReceiptDB).filter(models.ReceiptDB.id == receipt_id).first()
     if not db_receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
-    # Update the main receipt fields
     db_receipt.store_name = updated_data.store_name
     db_receipt.date = updated_data.date
     db_receipt.subtotal = updated_data.subtotal
@@ -260,34 +274,28 @@ def update_receipt(receipt_id: int, updated_data: ReceiptSchema, db: Session = D
     db_receipt.discount_amount = updated_data.discount_amount
     db_receipt.total_amount = updated_data.total_amount
 
-    # Update the items 
-    # (The safest way is to delete the old items and insert the newly edited ones)
     db.query(models.ItemDB).filter(models.ItemDB.receipt_id == receipt_id).delete()
     
     for item in updated_data.items:
         db_item = models.ItemDB(receipt_id=receipt_id, name=item.name, price=item.price)
         db.add(db_item)
 
-    # Save everything
     db.commit()
     db.refresh(db_receipt)
     
     return db_receipt
 
-# Delete receipt endpoint
+
 @app.delete("/api/receipts/{receipt_id}")
-def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
+def delete_receipt(receipt_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """Deletes a receipt and all its line items."""
     db_receipt = db.query(models.ReceiptDB).filter(models.ReceiptDB.id == receipt_id).first()
     
     if not db_receipt:
-        from fastapi import HTTPException # Just in case it's not imported at the top!
         raise HTTPException(status_code=404, detail="Receipt not found")
 
-    # 1. Delete all the line items first to prevent orphaned data
     db.query(models.ItemDB).filter(models.ItemDB.receipt_id == receipt_id).delete()
     
-    # 2. Delete the receipt itself
     db.delete(db_receipt)
     db.commit()
     

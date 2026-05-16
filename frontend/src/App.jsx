@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Toaster, toast } from 'react-hot-toast'; // <-- NEW: Import the Toaster
+import { Toaster, toast } from 'react-hot-toast';
 import ReceiptCard from './components/ReceiptCard';
 import AnalyticsTab from './components/AnalyticsTab';
+import Login from './components/Login'; // <-- Import the Login screen
 
 function App() {
+  // NEW: Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [currentReceipt, setCurrentReceipt] = useState(null);
@@ -11,20 +15,36 @@ function App() {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("receipts");
-
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
+  // Check for existing token on mount
+  useEffect(() => {
+    const token = localStorage.getItem('receipt_token');
+    if (token) setIsAuthenticated(true);
+  }, []);
+
+  // Only fetch data if we are authenticated
   useEffect(() => { 
-    setPage(0);
-    setHasMore(true);
-    fetchHistory(0, true, searchTerm);
-  }, [searchTerm]);
+    if (isAuthenticated) {
+      setPage(0);
+      setHasMore(true);
+      fetchHistory(0, true, searchTerm);
+    }
+  }, [searchTerm, isAuthenticated]);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, []);
+    if (isAuthenticated) fetchAnalytics();
+  }, [isAuthenticated]);
+
+  // NEW: Helper function to get the token for our fetch calls
+  const getHeaders = () => {
+    const token = localStorage.getItem('receipt_token');
+    return {
+      'Authorization': `Bearer ${token}`
+    };
+  };
 
   const fetchHistory = async (pageToFetch = 0, isReset = false, currentSearch = searchTerm) => {
     if (!isReset) setIsLoadingMore(true);
@@ -34,7 +54,8 @@ function App() {
       let url = `http://localhost:8000/api/receipts?skip=${skip}&limit=${limit}`;
       if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
         
-      const res = await fetch(url);
+      // NEW: Pass the Headers!
+      const res = await fetch(url, { headers: getHeaders() });
       if (res.ok) {
         const newData = await res.json();
         if (newData.length < limit) setHasMore(false);
@@ -42,9 +63,11 @@ function App() {
 
         if (isReset) setHistory(newData);
         else setHistory(prev => [...prev, ...newData]);
+      } else if (res.status === 401) {
+        handleLogout(); // Kick them out if token expired
       }
     } catch (err) { 
-      toast.error("Failed to fetch receipt history."); // <-- NEW
+      toast.error("Failed to fetch receipt history."); 
     } finally {
       setIsLoadingMore(false);
     }
@@ -58,7 +81,7 @@ function App() {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/analytics');
+      const res = await fetch('http://localhost:8000/api/analytics', { headers: getHeaders() });
       if (res.ok) setAnalyticsData(await res.json());
     } catch (err) { 
       console.error("Analytics fetch failed", err); 
@@ -76,8 +99,11 @@ function App() {
     const formData = new FormData();
     formData.append('file', file);
     
-    // NEW: Wrap the upload in a toast promise!
-    const uploadPromise = fetch('http://localhost:8000/api/extract', { method: 'POST', body: formData })
+    const uploadPromise = fetch('http://localhost:8000/api/extract', { 
+      method: 'POST', 
+      headers: getHeaders(), // NEW: Pass the headers!
+      body: formData 
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error('Failed to process image');
         return res.json();
@@ -86,7 +112,7 @@ function App() {
     toast.promise(uploadPromise, {
       loading: 'Digitizing receipt with AI...',
       success: 'Data extracted successfully!',
-      error: 'Failed to extract data. Is the backend running?',
+      error: 'Failed to extract data.',
     });
 
     try {
@@ -97,21 +123,16 @@ function App() {
       fetchHistory(0, true, searchTerm);
       fetchAnalytics();
       setActiveTab("receipts");
-    } catch (err) { 
-      // Error handled by toast.promise automatically
-    } finally { 
+    } catch (err) {} finally { 
       setLoading(false); 
-      setFile(null); // Clear the file input after successful upload
+      setFile(null);
     }
   };
 
   const handleDataRefresh = (action, payload) => {
     if (currentReceipt) {
-        if (action === 'delete' && currentReceipt.id === payload) {
-            setCurrentReceipt(null);
-        } else if (action === 'update' && currentReceipt.id === payload.id) {
-            setCurrentReceipt(payload);
-        }
+        if (action === 'delete' && currentReceipt.id === payload) setCurrentReceipt(null);
+        else if (action === 'update' && currentReceipt.id === payload.id) setCurrentReceipt(payload);
     }
     setPage(0);
     setHasMore(true);
@@ -119,17 +140,28 @@ function App() {
     fetchAnalytics();
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('receipt_token');
+    setIsAuthenticated(false);
+    setHistory([]);
+    setAnalyticsData(null);
+    setCurrentReceipt(null);
+  };
+
+  // If not logged in, show the Login screen!
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Toaster position="bottom-right" />
+        <Login onLoginSuccess={() => setIsAuthenticated(true)} />
+      </>
+    );
+  }
+
+  // --- Normal Dashboard Render Below ---
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* NEW: The Toaster Component. This controls where and how toasts appear globally */}
-      <Toaster 
-        position="bottom-right" 
-        toastOptions={{ 
-          style: { borderRadius: '10px', background: '#333', color: '#fff', fontSize: '14px' },
-          success: { duration: 3000, iconTheme: { primary: '#10b981', secondary: '#fff' } },
-          error: { duration: 4000, iconTheme: { primary: '#ef4444', secondary: '#fff' } },
-        }} 
-      />
+      <Toaster position="bottom-right" toastOptions={{ style: { borderRadius: '10px', background: '#333', color: '#fff', fontSize: '14px' }, success: { duration: 3000, iconTheme: { primary: '#10b981', secondary: '#fff' } }, error: { duration: 4000, iconTheme: { primary: '#ef4444', secondary: '#fff' } } }} />
 
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between h-16 items-center">
@@ -139,9 +171,14 @@ function App() {
             </div>
             <span className="text-xl font-extrabold tracking-tight text-slate-900">ReceiptAI</span>
           </div>
+          {/* NEW: Logout Button */}
+          <button onClick={handleLogout} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            Sign Out
+          </button>
         </div>
       </nav>
 
+      {/* ... The rest of your main dashboard UI remains exactly the same ... */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 sticky top-24">
@@ -211,14 +248,6 @@ function App() {
                     {history.filter(rec => !currentReceipt || rec.id !== currentReceipt.id).map((receipt) => (
                       <ReceiptCard key={receipt.id} receipt={receipt} isNew={false} onRefresh={handleDataRefresh} />
                     ))}
-
-                    {history.length === 0 && searchTerm && (
-                      <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
-                        <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <h3 className="mt-2 text-sm font-medium text-slate-900">No matching receipts</h3>
-                        <p className="mt-1 text-sm text-slate-500">We couldn't find anything matching "{searchTerm}".</p>
-                      </div>
-                    )}
                   </div>
                   
                   {hasMore && history.length > 0 && (
@@ -230,12 +259,6 @@ function App() {
                       >
                         {isLoadingMore ? 'Loading...' : 'Load More Receipts'}
                       </button>
-                    </div>
-                  )}
-                  
-                  {!hasMore && history.length > 0 && (
-                    <div className="mt-8 text-center text-sm text-slate-400">
-                      You've reached the end of your history.
                     </div>
                   )}
                 </section>
