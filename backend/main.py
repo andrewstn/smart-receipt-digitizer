@@ -8,6 +8,8 @@ import jwt
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from PIL import Image
+import random
+from datetime import datetime, timedelta
 
 # AI Imports
 from google import genai
@@ -32,7 +34,7 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# Setup Database
+os.makedirs("./data", exist_ok=True)
 models.Base.metadata.create_all(bind=engine)
 
 def get_db():
@@ -300,3 +302,62 @@ def delete_receipt(receipt_id: int, db: Session = Depends(get_db), user: str = D
     db.commit()
     
     return {"message": "Receipt successfully deleted"}
+
+# Demo Data Seeding Endpoint
+@app.post("/api/seed-demo")
+def seed_demo_data(db: Session = Depends(get_db)):
+    """Wipes the database and seeds it with 15 perfect demo receipts."""
+    # Wipe existing data to ensure a clean slate
+    db.query(models.ItemDB).delete()
+    db.query(models.ReceiptDB).delete()
+    db.commit()
+
+    # Fake Data Blueprints
+    stores = ["Target", "Starbucks", "Best Buy", "Whole Foods", "Home Depot", "Uber"]
+    items_pool = {
+        "Target": [("Paper Towels", 15.99), ("Hand Soap", 4.50), ("Coffee Mug", 9.00), ("Batteries", 12.99)],
+        "Starbucks": [("Iced Latte", 5.50), ("Croissant", 3.75), ("Americano", 4.00), ("Cake Pop", 2.50)],
+        "Best Buy": [("HDMI Cable", 19.99), ("Wireless Mouse", 49.99), ("Keyboard", 89.99), ("USB Drive", 14.99)],
+        "Whole Foods": [("Organic Apples", 7.99), ("Almond Milk", 4.99), ("Sourdough Bread", 6.50), ("Avocados", 5.00)],
+        "Home Depot": [("Screwdriver Set", 12.00), ("White Paint", 35.00), ("Masking Tape", 5.50), ("Lightbulbs", 18.00)],
+        "Uber": [("Ride to Airport", 45.00), ("Downtown Ride", 12.50), ("Ride Home", 18.00)]
+    }
+
+    today = datetime.now()
+
+    # Generate 15 receipts
+    for _ in range(15):
+        store = random.choice(stores)
+        
+        # Pick 1 to 3 random items for this specific store
+        num_items = random.randint(1, 3)
+        receipt_items = random.sample(items_pool[store], k=num_items)
+
+        # Calculate perfect math
+        subtotal = sum(item[1] for item in receipt_items)
+        tax = round(subtotal * 0.08, 2) # 8% tax
+        total = round(subtotal + tax, 2)
+
+        # Pick a random date within the last 45 days
+        random_days_ago = random.randint(0, 45)
+        receipt_date = (today - timedelta(days=random_days_ago)).strftime("%m-%d-%Y")
+
+        db_receipt = models.ReceiptDB(
+            store_name=store,
+            date=receipt_date,
+            subtotal=subtotal,
+            tax_amount=tax,
+            discount_amount=0.0,
+            total_amount=total
+        )
+        db.add(db_receipt)
+        db.commit()
+        db.refresh(db_receipt)
+
+        # Attach the line items
+        for item_name, item_price in receipt_items:
+            db_item = models.ItemDB(receipt_id=db_receipt.id, name=item_name, price=item_price)
+            db.add(db_item)
+
+    db.commit()
+    return {"message": "Demo data successfully seeded!"}

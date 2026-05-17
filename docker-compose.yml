@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    container_name: receipt_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # This maps a permanent volume so your SQLite database is saved between restarts!
+      - backend_data:/app/data
+    environment:
+      # Passes your API key from your computer into the container
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: receipt_frontend
+    ports:
+      # Map port 80 in the container to port 5173 on your computer
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_data:

@@ -1,5 +1,9 @@
-opencv-python
-easyocr
-google-genai
+fastapi
+uvicorn
+sqlalchemy
 pydantic
+python-multipart
+pyjwt
+pillow
+google-genai
 python-dotenv
