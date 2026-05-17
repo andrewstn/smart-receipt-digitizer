@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
-body {
-  background-color: #f8fafc; /* slate-50 */
+/* Override the default media query to use a manual class selector */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Smooth transition for background colors globally */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
